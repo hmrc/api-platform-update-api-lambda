@@ -2,6 +2,7 @@ package uk.gov.hmrc.apiplatform.updateapi
 
 import java.net.HttpURLConnection.HTTP_OK
 
+import com.amazonaws.services.lambda.runtime.Context
 import com.amazonaws.services.lambda.runtime.events.{APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent}
 import software.amazon.awssdk.core.SdkBytes.fromUtf8String
 import software.amazon.awssdk.services.apigateway.ApiGatewayClient
@@ -26,8 +27,8 @@ class UpdateApiHandler(apiGatewayClient: ApiGatewayClient,
     this(awsApiGatewayClient, new DeploymentService(awsApiGatewayClient), new SwaggerService, sys.env)
   }
 
-  override def handleInput(input: APIGatewayProxyRequestEvent): APIGatewayProxyResponseEvent = {
-    Try(putApi(input)) recover recovery get
+  override def handleInput(input: APIGatewayProxyRequestEvent, context: Context): APIGatewayProxyResponseEvent = {
+    Try(putApi(input)) recover recovery(context.getLogger) get
   }
 
   private def putApi(requestEvent: APIGatewayProxyRequestEvent): APIGatewayProxyResponseEvent = {
