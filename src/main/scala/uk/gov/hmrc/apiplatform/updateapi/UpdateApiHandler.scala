@@ -18,11 +18,12 @@ import scala.util.Try
 
 class UpdateApiHandler(apiGatewayClient: ApiGatewayClient,
                        deploymentService: DeploymentService,
-                       swaggerService: SwaggerService)
+                       swaggerService: SwaggerService,
+                       environment: Map[String, String])
   extends ProxiedRequestHandler {
 
   def this() {
-    this(awsApiGatewayClient, new DeploymentService(awsApiGatewayClient), new SwaggerService)
+    this(awsApiGatewayClient, new DeploymentService(awsApiGatewayClient), new SwaggerService, sys.env)
   }
 
   override def handleInput(input: APIGatewayProxyRequestEvent): APIGatewayProxyResponseEvent = {
@@ -33,7 +34,7 @@ class UpdateApiHandler(apiGatewayClient: ApiGatewayClient,
     val putApiRequest: PutRestApiRequest = PutRestApiRequest
       .builder()
       .body(fromUtf8String(toJson(swaggerService.createSwagger(requestEvent))))
-      .parameters(mapAsJavaMap(Map("endpointConfigurationTypes" -> "REGIONAL")))
+      .parameters(mapAsJavaMap(Map("endpointConfigurationTypes" -> environment.getOrElse("endpoint_type", "PRIVATE"))))
       .failOnWarnings(true)
       .mode(OVERWRITE)
       .restApiId(requestEvent.getPathParameters.get("api_id"))

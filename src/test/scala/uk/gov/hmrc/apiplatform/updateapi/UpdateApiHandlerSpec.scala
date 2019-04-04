@@ -26,16 +26,25 @@ class UpdateApiHandlerSpec extends WordSpecLike with Matchers with MockitoSugar 
     val mockAPIGatewayClient: ApiGatewayClient = mock[ApiGatewayClient]
     val mockSwaggerService: SwaggerService = mock[SwaggerService]
     val mockDeploymentService: DeploymentService = mock[DeploymentService]
-    val addApiHandler = new UpdateApiHandler(mockAPIGatewayClient, mockDeploymentService, mockSwaggerService)
+  }
+
+  trait StandardSetup extends Setup {
+    val environment: Map[String, String] = Map("endpoint_type" -> "REGIONAL")
+    val updateApiHandler = new UpdateApiHandler(mockAPIGatewayClient, mockDeploymentService, mockSwaggerService, environment)
+  }
+
+  trait SetupWithoutEndpointType extends Setup {
+    val environment: Map[String, String] = Map()
+    val updateApiHandler = new UpdateApiHandler(mockAPIGatewayClient, mockDeploymentService, mockSwaggerService, environment)
   }
 
   "Update API Handler" should {
-    "send API specification to AWS endpoint and return the updated API id" in new Setup {
+    "send API specification to AWS endpoint and return the updated API id" in new StandardSetup {
       val id: String = UUID.randomUUID().toString
       val apiGatewayResponse: PutRestApiResponse = PutRestApiResponse.builder().id(id).build()
       when(mockAPIGatewayClient.putRestApi(any[PutRestApiRequest])).thenReturn(apiGatewayResponse)
 
-      val response: APIGatewayProxyResponseEvent = addApiHandler.handleInput(new APIGatewayProxyRequestEvent()
+      val response: APIGatewayProxyResponseEvent = updateApiHandler.handleInput(new APIGatewayProxyRequestEvent()
         .withHttpMethod("PUT")
         .withPathParamters(mapAsJavaMap(Map("api_id" -> id)))
         .withBody(requestBody)
@@ -45,15 +54,15 @@ class UpdateApiHandlerSpec extends WordSpecLike with Matchers with MockitoSugar 
       response.getBody shouldEqual s"""{"restApiId":"$id"}"""
     }
 
-    "correctly convert request event into PutRestApiRequest with correct configuration" in new Setup {
+    "correctly convert request event into PutRestApiRequest with correct configuration" in new StandardSetup {
       val apiId: String = UUID.randomUUID().toString
-      val apiGatewayResponse: PutRestApiResponse = PutRestApiResponse.builder().id(UUID.randomUUID().toString).build()
+      val apiGatewayResponse: PutRestApiResponse = PutRestApiResponse.builder().id(apiId).build()
       val putRestApiRequestCaptor: ArgumentCaptor[PutRestApiRequest] = ArgumentCaptor.forClass(classOf[PutRestApiRequest])
       when(mockAPIGatewayClient.putRestApi(putRestApiRequestCaptor.capture())).thenReturn(apiGatewayResponse)
       val swagger: Swagger = new Swagger().host("localhost")
       when(mockSwaggerService.createSwagger(any[APIGatewayProxyRequestEvent])).thenReturn(swagger)
 
-      addApiHandler.handleInput(new APIGatewayProxyRequestEvent()
+      updateApiHandler.handleInput(new APIGatewayProxyRequestEvent()
         .withHttpMethod("PUT")
         .withPathParamters(mapAsJavaMap(Map("api_id" -> apiId)))
         .withBody(requestBody)
@@ -67,12 +76,28 @@ class UpdateApiHandlerSpec extends WordSpecLike with Matchers with MockitoSugar 
       capturedRequest.restApiId() shouldEqual apiId
     }
 
-    "deploy API" in new Setup {
+    "default to PRIVATE if no endpoint type specified in the environment" in new SetupWithoutEndpointType {
+      val apiId: String = UUID.randomUUID().toString
+      val apiGatewayResponse: PutRestApiResponse = PutRestApiResponse.builder().id(apiId).build()
+      val putRestApiRequestCaptor: ArgumentCaptor[PutRestApiRequest] = ArgumentCaptor.forClass(classOf[PutRestApiRequest])
+      when(mockAPIGatewayClient.putRestApi(putRestApiRequestCaptor.capture())).thenReturn(apiGatewayResponse)
+
+      updateApiHandler.handleInput(new APIGatewayProxyRequestEvent()
+        .withHttpMethod("PUT")
+        .withPathParamters(mapAsJavaMap(Map("api_id" -> apiId)))
+        .withBody(requestBody)
+      )
+
+      val capturedRequest: PutRestApiRequest = putRestApiRequestCaptor.getValue
+      capturedRequest.parameters should contain(Entry("endpointConfigurationTypes", "PRIVATE"))
+    }
+
+    "deploy API" in new StandardSetup {
       val apiId: String = UUID.randomUUID().toString
       val apiGatewayResponse: PutRestApiResponse = PutRestApiResponse.builder().id(apiId).build()
       when(mockAPIGatewayClient.putRestApi(any[PutRestApiRequest])).thenReturn(apiGatewayResponse)
 
-      addApiHandler.handleInput(new APIGatewayProxyRequestEvent()
+      updateApiHandler.handleInput(new APIGatewayProxyRequestEvent()
         .withHttpMethod("PUT")
         .withPathParamters(mapAsJavaMap(Map("api_id" -> apiId)))
         .withBody(requestBody)
@@ -81,11 +106,11 @@ class UpdateApiHandlerSpec extends WordSpecLike with Matchers with MockitoSugar 
       verify(mockDeploymentService, times(1)).deployApi(apiId)
     }
 
-    "correctly handle UnauthorizedException thrown by AWS SDK when updating API" in new Setup {
+    "correctly handle UnauthorizedException thrown by AWS SDK when updating API" in new StandardSetup {
       val errorMessage = "You're an idiot"
       when(mockAPIGatewayClient.putRestApi(any[PutRestApiRequest])).thenThrow(UnauthorizedException.builder().message(errorMessage).build())
 
-      val response: APIGatewayProxyResponseEvent = addApiHandler.handleInput(new APIGatewayProxyRequestEvent()
+      val response: APIGatewayProxyResponseEvent = updateApiHandler.handleInput(new APIGatewayProxyRequestEvent()
         .withHttpMethod("PUT")
         .withPathParamters(mapAsJavaMap(Map("api_id" -> UUID.randomUUID().toString)))
         .withBody(requestBody)
