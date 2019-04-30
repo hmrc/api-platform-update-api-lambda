@@ -1,7 +1,7 @@
 
 # api-platform-update-api-lambda
 
-This is a placeholder README.md for a new repository
+THIS REPO IS NO LONGER REQUIRED. IT SHOULD BE DELETED
 
 ### License
 
